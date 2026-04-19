@@ -82,3 +82,8 @@ plugin({
     }));
   },
 });
+
+// NOTE: feature flags for `bun:bundle` (e.g. BUDDY) are enabled via the
+// `--feature=FLAG` CLI flag on `bun run`. See bin/claude for the wrapper.
+// Edit `stubs/bun-bundle.ts` is a no-op at runtime — Bun's built-in macro
+// takes precedence over tsconfig paths.

@@ -1,7 +1,11 @@
-// Stub for the `bun:bundle` virtual module that the real Bun bundler injects at build time.
-// Runtime (unbundled) execution needs this shim so `import { feature } from 'bun:bundle'` resolves.
-// All feature flags default to false — keeps the standard user path active and avoids ANT/BRIDGE/
-// COORDINATOR branches that need internal infra.
+// TypeScript path-alias target for `bun:bundle`. This file is consulted by
+// `tsc` / IDEs for type-checking; at *runtime* Bun's built-in `bun:bundle`
+// macro takes precedence (that's where the "feature() must be in if/ternary"
+// error comes from). To actually enable a flag at runtime, pass
+// `--feature=FLAG` to `bun run` — see bin/claude.
+//
+// Keeping this stub type-accurate (always-false) is fine because TypeScript's
+// type-narrowing from the return type doesn't widen the behavior either way.
 export function feature(_flag: string): boolean {
   return false;
 }

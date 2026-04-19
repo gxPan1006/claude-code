@@ -39,4 +39,10 @@ if [[ "${CLAUDE2_SAFE:-0}" != "1" ]]; then
     EXTRA_ARGS+=(--dangerously-skip-permissions)
   fi
 fi
-exec bun --preload "$CC_ROOT/bun-preload.ts" "$CC_ROOT/src/entrypoints/cli.tsx" "${EXTRA_ARGS[@]}" "$@"
+# Compile-time feature flags for bun:bundle's feature() macro. Each --feature=X
+# makes `feature('X')` evaluate to true at parse time (DCE branch stays live).
+# Add more flags here as needed.
+FEATURE_FLAGS=(
+  --feature=BUDDY   # /buddy command + companion sprite
+)
+exec bun "${FEATURE_FLAGS[@]}" --preload "$CC_ROOT/bun-preload.ts" "$CC_ROOT/src/entrypoints/cli.tsx" "${EXTRA_ARGS[@]}" "$@"
