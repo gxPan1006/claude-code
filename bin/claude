@@ -5,7 +5,15 @@
 # bunfig.toml location doesn't matter; tsconfig.json is found by walking up
 # from the entry file.
 set -euo pipefail
-CC_ROOT="/Users/guoxunpan/code/claude-code"
+# Resolve this script's real location so the wrapper works from any clone
+# path (and still when invoked via a symlink in ~/.local/bin/claude2).
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_SOURCE" ]; do
+  SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+  SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
+  [[ "$SCRIPT_SOURCE" != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
+done
+CC_ROOT="$(cd -P "$(dirname "$SCRIPT_SOURCE")/.." && pwd)"
 # Skip the "switched from npm to native installer" post-trust banner — this
 # build isn't an npm install anyway, the banner is just noise that briefly
 # covers the REPL prompt area and makes the screen look "blank".
