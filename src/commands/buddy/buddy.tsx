@@ -5,27 +5,19 @@
 //   /buddy pet            -> trigger the heart-burst animation in CompanionSprite
 //   /buddy name <new>     -> rename
 //   /buddy mute|unmute    -> hide/show the sprite without releasing the companion
-//   /buddy release        -> delete the stored companion (bones regen from userId next adopt)
+//   /buddy release        -> delete the stored companion (bones regen on next adopt)
 //
-// Rendering: this command is local-jsx, so it returns a ReactNode. We render a
-// small confirmation via Text, then call onDone() so the REPL closes the overlay.
+// Rendering convention (see src/commands/plan/plan.tsx): build the JSX, run
+// renderToString() to materialize it into terminal-ready output, pass that
+// string to onDone(). Returning JSX from the async call() body doesn't show up
+// in the REPL — only the onDone argument does.
 import * as React from 'react'
 import { Box, Text } from '../../ink.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { getCompanion } from '../../buddy/companion.js'
-import { useSetAppState } from '../../state/AppState.js'
 import type { StoredCompanion } from '../../buddy/types.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
-
-// Tiny helper component — dispatches companionPetAt into AppState on mount
-// (the LocalJSXCommandCall body runs outside render so can't use hooks itself).
-function PetDispatcher({ at }: { at: number }): null {
-  const setAppState = useSetAppState()
-  React.useEffect(() => {
-    setAppState(prev => ({ ...prev, companionPetAt: at }))
-  }, [setAppState, at])
-  return null
-}
+import { renderToString } from '../../utils/staticRender.js'
 
 function InfoLine({ label, value }: { label: string; value: string }) {
   return (
@@ -36,73 +28,72 @@ function InfoLine({ label, value }: { label: string; value: string }) {
   )
 }
 
-export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
+async function emit(
+  onDone: Parameters<LocalJSXCommandCall>[0],
+  node: React.ReactNode,
+  system?: string,
+): Promise<React.ReactNode> {
+  const out = await renderToString(<>{node}</>)
+  onDone(out, system ? { display: 'system' } : undefined)
+  return null
+}
+
+export const call: LocalJSXCommandCall = async (onDone, context, args) => {
   const trimmed = (args ?? '').trim()
   const [subRaw, ...rest] = trimmed.split(/\s+/)
   const sub = subRaw?.toLowerCase() ?? ''
 
-  // Helper: persist a StoredCompanion (or clear it).
   const setStored = (next: StoredCompanion | undefined) => {
     saveGlobalConfig(cfg => ({ ...cfg, companion: next }))
   }
 
   const now = Date.now()
   const existing = getGlobalConfig().companion
-  const hydrated = getCompanion()
 
   // --- release -----------------------------------------------------------
   if (sub === 'release') {
     setStored(undefined)
-    onDone('Companion released.', { display: 'system' })
-    return <Text>👋 released</Text>
+    return emit(onDone, <Text>👋 companion released.</Text>)
   }
 
   // --- mute / unmute -----------------------------------------------------
   if (sub === 'mute' || sub === 'unmute') {
     const muted = sub === 'mute'
     saveGlobalConfig(cfg => ({ ...cfg, companionMuted: muted }))
-    onDone(muted ? 'Companion muted.' : 'Companion unmuted.', {
-      display: 'system',
-    })
-    return <Text>{muted ? '🔇 muted' : '🔊 unmuted'}</Text>
+    return emit(
+      onDone,
+      <Text>{muted ? '🔇 muted' : '🔊 unmuted'} companion.</Text>,
+    )
   }
 
   // --- name <new> --------------------------------------------------------
   if (sub === 'name') {
     const newName = rest.join(' ').trim()
     if (!newName) {
-      onDone('Usage: /buddy name <new-name>', { display: 'system' })
-      return <Text color="yellow">need a name</Text>
+      return emit(onDone, <Text color="yellow">Usage: /buddy name &lt;new-name&gt;</Text>)
     }
     if (!existing) {
-      onDone('No companion yet. Run /buddy to adopt one first.', {
-        display: 'system',
-      })
-      return <Text color="yellow">no companion</Text>
+      return emit(
+        onDone,
+        <Text color="yellow">No companion yet. Run /buddy to adopt one first.</Text>,
+      )
     }
     setStored({ ...existing, name: newName })
-    onDone(`Renamed to ${newName}.`, { display: 'system' })
-    return <Text>✏️  renamed to {newName}</Text>
+    return emit(onDone, <Text>✏️  renamed to {newName}.</Text>)
   }
 
   // --- pet ---------------------------------------------------------------
   if (sub === 'pet') {
     if (!existing) {
-      onDone('No companion to pet. Run /buddy to adopt one first.', {
-        display: 'system',
-      })
-      return <Text color="yellow">no companion</Text>
+      return emit(
+        onDone,
+        <Text color="yellow">No companion to pet. Run /buddy to adopt one first.</Text>,
+      )
     }
-    // CompanionSprite watches AppState.companionPetAt. The hook can't be
-    // called from this async body, so a tiny child component dispatches it
-    // on mount via useEffect.
-    onDone('You pet the companion.', { display: 'system' })
-    return (
-      <>
-        <PetDispatcher at={now} />
-        <Text>♥ pet</Text>
-      </>
-    )
+    // CompanionSprite watches AppState.companionPetAt. setAppState is on
+    // ToolUseContext (which LocalJSXCommandContext extends).
+    context.setAppState(prev => ({ ...prev, companionPetAt: now }))
+    return emit(onDone, <Text>♥ you pet the companion.</Text>)
   }
 
   // --- default: adopt or info -------------------------------------------
@@ -114,27 +105,28 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
       hatchedAt: now,
     }
     setStored(defaultSoul)
-    const freshly = getCompanion()
-    onDone(`Adopted ${defaultSoul.name}!`, { display: 'system' })
-    return (
+    const hydrated = getCompanion()
+    return emit(
+      onDone,
       <Box flexDirection="column">
         <Text bold>🥚 hatched!</Text>
-        <InfoLine label="name" value={freshly?.name ?? defaultSoul.name} />
+        <InfoLine label="name" value={hydrated?.name ?? defaultSoul.name} />
         <InfoLine
           label="species"
-          value={freshly?.species ?? '(regen on next read)'}
+          value={hydrated?.species ?? '(regen on next read)'}
         />
-        <InfoLine label="rarity" value={freshly?.rarity ?? '?'} />
+        <InfoLine label="rarity" value={hydrated?.rarity ?? '?'} />
         <Text dimColor>
           Try: /buddy pet · /buddy name &lt;new&gt; · /buddy mute
         </Text>
-      </Box>
+      </Box>,
     )
   }
 
   // Info view — hydrated has bones + soul merged.
-  onDone(undefined, { display: 'skip' })
-  return (
+  const hydrated = getCompanion()
+  return emit(
+    onDone,
     <Box flexDirection="column">
       <Text bold>Your companion</Text>
       <InfoLine label="name" value={hydrated?.name ?? existing.name} />
@@ -148,6 +140,6 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
       <Text dimColor>
         /buddy pet · /buddy name &lt;new&gt; · /buddy mute · /buddy release
       </Text>
-    </Box>
+    </Box>,
   )
 }
