@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "baseUrl": ".",
+    "paths": {
+      "src/*": ["./src/*"],
+      "bun:bundle": ["./stubs/bun-bundle.ts"],
+      "@ant/claude-for-chrome-mcp": ["./stubs/ant-chrome-mcp.ts"],
+      "@ant/computer-use-swift": ["./stubs/ant-computer-use-swift.ts"],
+      "@ant/computer-use-mcp": ["./stubs/ant-computer-use-mcp.ts"],
+      "@ant/computer-use-mcp/types": ["./stubs/ant-computer-use-mcp-types.ts"],
+      "@ant/computer-use-mcp/sentinelApps": ["./stubs/ant-computer-use-mcp-sentinelApps.ts"],
+      "@ant/computer-use-input": ["./stubs/ant-computer-use-input.ts"],
+      "color-diff-napi": ["./stubs/color-diff-napi.ts"]
+    },
+    "types": ["bun", "node"]
+  },
+  "include": ["src/**/*", "stubs/**/*"]
+}
