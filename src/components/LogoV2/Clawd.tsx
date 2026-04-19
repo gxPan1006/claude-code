@@ -71,6 +71,25 @@ const APPLE_EYES: Record<ClawdPose, string> = {
   'arms-up': ' ▗   ▖ '
 };
 export function Clawd(t0) {
+  // Local override: purple three-eyed creature. 4 rows × 9 cols (roughly
+  // square visual footprint once the terminal char aspect ratio is factored
+  // in). Strictly left-right symmetric via canonical mirror pairs
+  // (▐↔▌, ▛↔▜, ▙↔▟, ▖↔▗, ▘↔▝, and self-symmetric █/▀/▄/' ').
+  //
+  //   ▗▛▀▀▀▀▀▜▖    head top with curved corners
+  //   ▐█▘ ▄ ▝█▌    two eyes flanking a center eye
+  //   ▐█▖   ▗█▌    face middle with small cheek dots
+  //   ▝▜█▀▄▀█▛▘    chin with a little mouth dip
+  const purple = '#8c64d2';
+  return (
+    <Box flexDirection="column">
+      <Text color={purple}>▗▛▀▀▀▀▀▜▖</Text>
+      <Text color={purple}>▐█▘ ▄ ▝█▌</Text>
+      <Text color={purple}>▐█▖   ▗█▌</Text>
+      <Text color={purple}>▝▜█▀▄▀█▛▘</Text>
+    </Box>
+  );
+  // eslint-disable-next-line no-unreachable -- original implementation preserved below
   const $ = _c(26);
   let t1;
   if ($[0] !== t0) {

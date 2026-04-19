@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth:*)",
+      "Read(//Users/guoxunpan/**)"
+    ],
+    "additionalDirectories": [
+      "/Users/guoxunpan/obsidian/my-obsi/claude code实践",
+      "/Users/guoxunpan/.claude/commands"
+    ]
+  }
+}

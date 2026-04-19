@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Wrapper: run this source snapshot as `claude2`. Keeps the caller's cwd
+# intact so the CLI treats the user's current directory as the project root,
+# not claude-code's own repo. Uses `bun --preload` (absolute path) so
+# bunfig.toml location doesn't matter; tsconfig.json is found by walking up
+# from the entry file.
+set -euo pipefail
+CC_ROOT="/Users/guoxunpan/code/claude-code"
+# Skip the "switched from npm to native installer" post-trust banner — this
+# build isn't an npm install anyway, the banner is just noise that briefly
+# covers the REPL prompt area and makes the screen look "blank".
+export DISABLE_INSTALLATION_CHECKS="${DISABLE_INSTALLATION_CHECKS:-1}"
+# Also skip the autoupdate background check — we're not a versioned install,
+# so there's nothing to update to.
+export DISABLE_AUTOUPDATER="${DISABLE_AUTOUPDATER:-1}"
+# Default to Opus 4.7 when the user hasn't overridden. ANTHROPIC_MODEL is what
+# the main loop reads; ANTHROPIC_DEFAULT_OPUS_MODEL makes the `opus` alias (and
+# picker's Opus entry) resolve to 4.7 too. The custom picker entry adds an
+# explicit "Opus 4.7" row to /model without touching src/.
+export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-claude-opus-4-7[1m]}"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-claude-opus-4-7[1m]}"
+export ANTHROPIC_CUSTOM_MODEL_OPTION="${ANTHROPIC_CUSTOM_MODEL_OPTION:-claude-opus-4-7[1m]}"
+export ANTHROPIC_CUSTOM_MODEL_OPTION_NAME="${ANTHROPIC_CUSTOM_MODEL_OPTION_NAME:-Opus 4.7 (1M context)}"
+export ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION="${ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION:-Opus 4.7 with 1M context · Most capable for complex work}"
+# Default to bypass-permissions mode. Skip with: CLAUDE2_SAFE=1 claude2
+# (or pass --permission-mode default / plan / auto explicitly).
+EXTRA_ARGS=()
+if [[ "${CLAUDE2_SAFE:-0}" != "1" ]]; then
+  # Only inject if the user hasn't already specified a permission mode.
+  if ! printf '%s\n' "$@" | grep -qE -- '^(--dangerously-skip-permissions|--permission-mode)$'; then
+    EXTRA_ARGS+=(--dangerously-skip-permissions)
+  fi
+fi
+exec bun --preload "$CC_ROOT/bun-preload.ts" "$CC_ROOT/src/entrypoints/cli.tsx" "${EXTRA_ARGS[@]}" "$@"

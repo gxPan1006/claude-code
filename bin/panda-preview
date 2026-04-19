@@ -1,0 +1,165 @@
+#!/usr/bin/env bun
+// Mascot preview. All block-art designs are strictly left-right symmetric
+// using canonical mirror pairs:
+//   ' '↔' ', █↔█, ▀↔▀, ▄↔▄, ▐↔▌, ▖↔▗, ▘↔▝, ▛↔▜, ▙↔▟, ▞↔▚
+
+const RESET = '\x1b[0m';
+const fg = (rgb: [number, number, number]) => `\x1b[38;2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
+const bg = (rgb: [number, number, number]) => `\x1b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
+
+type Row = { text: string; innerBg?: [number, number] };
+type Design = {
+  name: string;
+  body: [number, number, number];
+  face?: [number, number, number];
+  rows: Row[];
+};
+
+// Sanity: each row must be a horizontal palindrome under the mirror table.
+const MIRROR: Record<string, string> = {
+  ' ': ' ', '█': '█', '▀': '▀', '▄': '▄',
+  '▐': '▌', '▌': '▐',
+  '▖': '▗', '▗': '▖',
+  '▘': '▝', '▝': '▘',
+  '▛': '▜', '▜': '▛',
+  '▙': '▟', '▟': '▙',
+  '▞': '▚', '▚': '▞',
+};
+function assertSymmetric(name: string, text: string) {
+  const chars = [...text];
+  const n = chars.length;
+  for (let i = 0; i < n / 2; i++) {
+    const l = chars[i];
+    const r = chars[n - 1 - i];
+    if (MIRROR[l] !== r) throw new Error(`${name}: pos ${i + 1} '${l}' ↔ pos ${n - i} '${r}' not a mirror pair`);
+  }
+}
+
+const designs: Design[] = [
+  {
+    name: '① 熊猫（4 行，胖圆）',
+    body: [24, 24, 24],
+    face: [245, 245, 245],
+    rows: [
+      { text: '▟█   █▙' },
+      { text: '▐█▀▀▀█▌', innerBg: [2, 5] },
+      { text: '▐█▝▄▘█▌', innerBg: [2, 5] },
+      { text: ' ▀▀▀▀▀ ' },
+    ],
+  },
+  {
+    name: '② 猫（尖耳 + 胡子）',
+    body: [230, 160, 70],
+    rows: [
+      { text: '▙     ▟' },
+      { text: '▛█▖ ▗█▜' },
+      { text: '▌▝▄▀▄▘▐' },
+      { text: '▝▀▀▀▀▀▘' },
+    ],
+  },
+  {
+    name: '③ 机器人（方头）',
+    body: [110, 205, 235],
+    face: [20, 40, 60],
+    rows: [
+      { text: '▗▄▄▄▄▄▖' },
+      { text: '▐█▀▀▀█▌', innerBg: [2, 5] },
+      { text: '▐█▖ ▗█▌', innerBg: [2, 5] },
+      { text: ' ▀█▄█▀ ' },
+    ],
+  },
+  {
+    name: '④ 幽灵',
+    body: [230, 230, 245],
+    rows: [
+      { text: ' ▄▄▄▄▄ ' },
+      { text: '▐█▘ ▝█▌' },
+      { text: '▐█▗ ▖█▌' },
+      { text: '▝▙▟ ▙▟▘' },
+    ],
+  },
+  {
+    name: '⑤ 心',
+    body: [230, 70, 100],
+    rows: [
+      { text: '▟▀▙ ▟▀▙' },
+      { text: '███████' },
+      { text: '▝█████▘' },
+      { text: '  ▝▄▘  ' },
+    ],
+  },
+  {
+    name: '⑥ 骷髅',
+    body: [225, 225, 225],
+    face: [40, 40, 40],
+    rows: [
+      { text: ' ▟▀▀▀▙ ' },
+      { text: '▐█▘ ▝█▌' },
+      { text: '▐█▗▀▖█▌', innerBg: [2, 5] },
+      { text: ' ▀▄▄▄▀ ' },
+    ],
+  },
+  {
+    name: '⑦ 小怪物（三眼）',
+    body: [140, 100, 210],
+    rows: [
+      { text: '▗▛▀▀▀▜▖' },
+      { text: '▐█▘▄▝█▌' },
+      { text: '▐█▖ ▗█▌' },
+      { text: '▝▜█▀█▛▘' },
+    ],
+  },
+  {
+    name: '⑧ 心形（简洁）',
+    body: [230, 70, 100],
+    rows: [
+      { text: '▟▙ ▟▙' },
+      { text: '█████' },
+      { text: '▝███▘' },
+      { text: '  ▀  ' },
+    ],
+  },
+];
+
+// Verify symmetry at load time.
+for (const d of designs) {
+  for (const r of d.rows) assertSymmetric(d.name, r.text);
+}
+
+function render(d: Design, row: Row): string {
+  const body = fg(d.body);
+  if (!row.innerBg || !d.face) return `${body}${row.text}${RESET}`;
+  const [s, e] = row.innerBg;
+  const chars = [...row.text];
+  const before = chars.slice(0, s).join('');
+  const middle = chars.slice(s, e).join('');
+  const after = chars.slice(e).join('');
+  return `${body}${before}${bg(d.face)}${body}${middle}${RESET}${body}${after}${RESET}`;
+}
+
+function show(d: Design) {
+  process.stdout.write(`\n  ${d.name}\n`);
+  for (const row of d.rows) process.stdout.write(`    ${render(d, row)}\n`);
+}
+
+process.stdout.write('\n=== 块字符版（4 行，严格对称）===\n');
+for (const d of designs) show(d);
+
+process.stdout.write('\n\n=== Emoji 版（1 字符，最干净）===\n');
+const emojis: [string, string][] = [
+  ['Ⓐ 熊猫', '🐼'],
+  ['Ⓑ 小狗', '🐶'],
+  ['Ⓒ 狐狸', '🦊'],
+  ['Ⓓ 机器人', '🤖'],
+  ['Ⓔ 幽灵', '👻'],
+  ['Ⓕ 外星人', '👽'],
+  ['Ⓖ 火箭', '🚀'],
+  ['Ⓗ 闪电', '⚡'],
+];
+for (const [label, e] of emojis) {
+  process.stdout.write(`  ${label}  ${e}\n`);
+}
+
+process.stdout.write(
+  '\n告诉我编号（①-⑧ 或 Ⓐ-Ⓗ）。或者在某版上微调，比如 "①但耳朵再圆点"、"③但眼睛红色"。\n\n',
+);

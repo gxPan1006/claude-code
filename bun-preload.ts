@@ -14,7 +14,11 @@ import { readFileSync } from 'fs';
 // "minimum supported version" check (server-side policy) doesn't reject us.
 // Override via CLAUDE_CODE_VERSION env if the minimum creeps up.
 (globalThis as any).MACRO = (globalThis as any).MACRO ?? {
-  VERSION: process.env.CLAUDE_CODE_VERSION ?? '1.0.0',
+  // Must be >= the minVersion that GrowthBook returns for tengu_version_config
+  // (currently 1.0.24). Below that, assertMinVersion() calls gracefulShutdownSync(1)
+  // a few hundred ms into startup — the banner renders first, then the process
+  // dies, giving the misleading "claude2 auto-closes" impression.
+  VERSION: process.env.CLAUDE_CODE_VERSION ?? '2.1.114',
   BUILD_TIME: new Date().toISOString(),
   PACKAGE_URL: '@anthropic-ai/claude-code',
 };
