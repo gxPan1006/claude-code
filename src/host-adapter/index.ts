@@ -17,6 +17,7 @@ import type {
   SessionSpec,
 } from './contract/v1/index.js'
 import { CONTRACT_VERSION } from './contract/v1/index.js'
+import { buildHostAdapterAuth } from './internal/auth.js'
 import { buildQueryEngine } from './internal/engine-factory.js'
 import { connectMcpServers } from './internal/mcp-spawner.js'
 import {
@@ -102,6 +103,7 @@ async function createSession(spec: SessionSpec): Promise<Session> {
 export const hostAdapter: HostAdapter = {
   contractVersion: CONTRACT_VERSION,
   createSession,
+  auth: buildHostAdapterAuth(),
 }
 
 export default hostAdapter
