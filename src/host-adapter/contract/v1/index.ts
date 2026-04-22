@@ -8,5 +8,6 @@ export * from './memory.js'
 export * from './dispatcher.js'
 export * from './permission.js'
 export * from './host-adapter.js'
+export * from './auth.js'
 
 export const CONTRACT_VERSION = '1.0.0' as const
