@@ -1,39 +1,83 @@
-// HostAdapter entry. Checkpoint 2 wires createSession() to a real QueryEngine
-// (via internal/engine-factory) and returns a Session (internal/session-impl).
-// MCP spec translation (stdio/sse/ws → MCPServerConnection) is still deferred
-// — createSession currently ignores spec.mcpServers and passes an empty array.
-// That's enough for the construct-and-close smoke test; real MCP wiring lands
-// in the next checkpoint together with e2e testing against a real API key.
+// HostAdapter entry. Checkpoint 3 wires:
+//   - real canUseTool ↔ Contract v1 onPermissionRequest (via permission.ts)
+//   - stdio MCP specs → MCPServerConnection[] (via mcp-spawner.ts)
+//   - Session.inject for SystemNotice (via session-impl.ts)
+//
+// Still NotImplemented (noted in README §Checkpoint 3+):
+//   - Session.inject for UserMessage (no claude2 primitive)
+//   - Session.fork
+//   - MemoryBridge override (custom system-prompt assembly)
+//   - DispatcherHook (cross-backend tool-call routing)
 
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import type {
+  ChannelMeta,
   HostAdapter,
   Session,
   SessionSpec,
-} from './contract/v1/host-adapter.js'
+} from './contract/v1/index.js'
 import { CONTRACT_VERSION } from './contract/v1/index.js'
 import { buildQueryEngine } from './internal/engine-factory.js'
-import { SessionImpl } from './internal/session-impl.js'
+import { connectMcpServers } from './internal/mcp-spawner.js'
+import {
+  buildPermissionRequest,
+  toClaude2Decision,
+} from './internal/permission.js'
+import { SessionImpl, type MetaRef } from './internal/session-impl.js'
 
 export * as internal from './internal/barrel.js'
 
-/**
- * Default permission callback used when spec.hooks.onPermissionRequest is not
- * provided: allow every tool call. Real permission delegation (CanUseToolFn ↔
- * Contract v1 onPermissionRequest) lands in the next checkpoint.
- */
-const allowAllCanUseTool: CanUseToolFn = async (_tool, input) => ({
-  behavior: 'allow',
-  updatedInput: input,
-})
-
 async function createSession(spec: SessionSpec): Promise<Session> {
+  const mcpClients = await connectMcpServers(spec.mcpServers, spec.profile)
+
+  // Shared meta reference: SessionImpl.send() writes it, canUseTool reads it.
+  const metaRef: MetaRef = { current: null }
+
+  const canUseTool: CanUseToolFn = async (
+    tool,
+    input,
+    _toolUseContext,
+    _assistantMessage,
+    toolUseID,
+  ) => {
+    const onPermissionRequest = spec.hooks?.onPermissionRequest
+    if (!onPermissionRequest) {
+      return { behavior: 'allow', updatedInput: input }
+    }
+    const meta: ChannelMeta =
+      metaRef.current ?? {
+        channel: 'unknown',
+        clientId: 'unknown',
+        userId: 'unknown',
+        ts: Date.now(),
+      }
+    const req = buildPermissionRequest(
+      { tool: { name: tool.name }, input, toolUseID },
+      meta,
+    )
+    const decision = toClaude2Decision(await onPermissionRequest(req))
+    switch (decision.kind) {
+      case 'allow':
+        return { behavior: 'allow', updatedInput: input }
+      case 'deny':
+        return {
+          behavior: 'deny',
+          message: decision.reason,
+          decisionReason: { type: 'mode', mode: 'default' },
+        }
+      case 'ask':
+        return { behavior: 'ask', message: decision.prompt }
+    }
+  }
+
   const built = buildQueryEngine({
     cwd: typeof spec.extra?.['cwd'] === 'string' ? spec.extra['cwd'] : undefined,
-    canUseTool: allowAllCanUseTool,
+    mcpClients,
+    canUseTool,
     customSystemPrompt: spec.systemPrompt,
   })
-  return new SessionImpl(built)
+
+  return new SessionImpl({ built, mcpClients, metaRef })
 }
 
 export const hostAdapter: HostAdapter = {

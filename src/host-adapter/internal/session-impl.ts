@@ -3,19 +3,20 @@
 
 import { randomUUID } from 'node:crypto'
 
+import type { MCPServerConnection } from '../../services/mcp/types.js'
 import type {
+  ChannelMeta,
   Session,
   SessionEvent,
   SystemNotice,
   UserMessage,
 } from '../contract/v1/index.js'
 import { translateSdkMessage } from './events.js'
-import { systemNoticeToPrompt, userMessageToPrompt } from './messages.js'
 import type { BuiltEngine } from './engine-factory.js'
+import { systemNoticeToPrompt, userMessageToPrompt } from './messages.js'
 
 /**
- * Async FIFO queue for SessionEvents. Producers call push(); consumers iterate
- * via iterator(). Closing via end() makes the iterator finish.
+ * Async FIFO queue for SessionEvents.
  */
 class EventQueue {
   private buffer: SessionEvent[] = []
@@ -61,31 +62,51 @@ class EventQueue {
   }
 }
 
+export interface MetaRef {
+  current: ChannelMeta | null
+}
+
+export interface SessionImplDeps {
+  built: BuiltEngine
+  mcpClients: MCPServerConnection[]
+  /** Shared ref updated by send(), read by the canUseTool closure in index.ts. */
+  metaRef: MetaRef
+}
+
 export class SessionImpl implements Session {
   readonly id: string
   private readonly queue = new EventQueue()
   private pumpPromise: Promise<void> = Promise.resolve()
+  private pendingSystemNotices: string[] = []
   private closed = false
 
-  constructor(private readonly built: BuiltEngine) {
+  constructor(private readonly deps: SessionImplDeps) {
     this.id = randomUUID()
   }
 
   async send(message: UserMessage): Promise<void> {
     if (this.closed) throw new Error('Session is closed')
-    const prompt = userMessageToPrompt(message)
-    // Start streaming from QueryEngine; pump events into our queue.
-    // Caller awaits send() after their consumer has started iterating stream().
+    this.deps.metaRef.current = message.meta
+
+    let prompt = userMessageToPrompt(message)
+    if (this.pendingSystemNotices.length > 0) {
+      const notice = this.pendingSystemNotices.join('\n\n')
+      this.pendingSystemNotices = []
+      if (typeof prompt === 'string') {
+        prompt = `${notice}\n\n${prompt}`
+      } else {
+        prompt = [{ type: 'text', text: notice }, ...prompt]
+      }
+    }
+
     this.pumpPromise = this.pumpPromise.then(() => this.pump(prompt))
     await this.pumpPromise
   }
 
-  private async pump(prompt: string | Parameters<typeof translateSdkMessage>[0][]): Promise<void> {
-    const stream = this.built.engine.submitMessage(
-      // submitMessage accepts string | ContentBlockParam[]; both shapes are
-      // produced by userMessageToPrompt.
-      prompt as string,
-    )
+  private async pump(
+    prompt: string | Parameters<BuiltEngine['engine']['submitMessage']>[0],
+  ): Promise<void> {
+    const stream = this.deps.built.engine.submitMessage(prompt as string)
     for await (const sdkMsg of stream) {
       if (this.closed) break
       const event = translateSdkMessage(
@@ -102,31 +123,31 @@ export class SessionImpl implements Session {
     }
   }
 
-  async inject(_message: UserMessage | SystemNotice): Promise<void> {
-    // Injection semantics for checkpoint 2: treat SystemNotice as a meta
-    // prompt on the next turn. Until claude2 grows a real mid-turn inject
-    // primitive, we queue the text and rely on the next send() to pick it up.
-    // Intentionally not implemented yet — callers (events framework) are
-    // wired but behaviour comes in a later checkpoint.
+  async inject(message: UserMessage | SystemNotice): Promise<void> {
+    if (this.closed) throw new Error('Session is closed')
+    if (message.role === 'system') {
+      this.pendingSystemNotices.push(systemNoticeToPrompt(message))
+      return
+    }
     throw new Error(
-      'host-adapter: Session.inject not yet implemented (see README.md §Checkpoint 2 hooks)',
+      'host-adapter: Session.inject(UserMessage) not yet implemented — claude2 has no mid-turn user-message injection primitive',
     )
   }
 
   async fork(): Promise<Session> {
-    throw new Error(
-      'host-adapter: Session.fork not yet implemented (see README.md §Checkpoint 2 hooks)',
-    )
+    throw new Error('host-adapter: Session.fork not yet implemented')
   }
 
   async close(): Promise<void> {
     if (this.closed) return
     this.closed = true
-    this.built.abortController.abort()
+    this.deps.built.abortController.abort()
     this.queue.end()
+    await Promise.allSettled(
+      this.deps.mcpClients.map((c) => {
+        if (c.type === 'connected') return c.cleanup()
+        return Promise.resolve()
+      }),
+    )
   }
 }
-
-// Suppress unused-import noise in this stub; systemNoticeToPrompt will be
-// used once inject() lands in checkpoint 2.
-void systemNoticeToPrompt
