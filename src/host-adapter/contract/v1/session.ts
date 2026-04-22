@@ -15,6 +15,7 @@ export type SessionEvent =
   | { type: 'permission-request'; toolId: string; tool: string; input: unknown }
   | { type: 'compact-start'; reason: string }
   | { type: 'compact-done' }
+  | { type: 'system-notice'; source: string; text: string }
   | { type: 'error'; error: { code: string; message: string } }
 
 export interface Session {

@@ -98,11 +98,18 @@ export async function connectMcpServers(
   const results = await Promise.allSettled(applicable.map(connectMcpServer))
   return results.map((r, i): MCPServerConnection => {
     const spec = applicable[i]!
-    if (r.status === 'fulfilled') return r.value
+    if (r.status === 'fulfilled') {
+      if (process.env.AI_COGNIT_DEBUG_MCP) {
+        console.log(`[mcp] ✓ connected ${spec.name}`)
+      }
+      return r.value
+    }
+    const error = r.reason instanceof Error ? r.reason.message : String(r.reason)
+    console.warn(`[mcp] ✗ failed to connect ${spec.name}: ${error}`)
     return {
       type: 'failed',
       name: spec.name,
-      error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+      error,
       config: {
         type: 'stdio',
         command: spec.transport.kind === 'stdio' ? spec.transport.command : '',

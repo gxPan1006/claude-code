@@ -40,10 +40,6 @@ async function createSession(spec: SessionSpec): Promise<Session> {
     _assistantMessage,
     toolUseID,
   ) => {
-    const onPermissionRequest = spec.hooks?.onPermissionRequest
-    if (!onPermissionRequest) {
-      return { behavior: 'allow', updatedInput: input }
-    }
     const meta: ChannelMeta =
       metaRef.current ?? {
         channel: 'unknown',
@@ -51,6 +47,29 @@ async function createSession(spec: SessionSpec): Promise<Session> {
         userId: 'unknown',
         ts: Date.now(),
       }
+
+    // Dispatcher: ask the external router whether this tool call stays local
+    // or gets proxied elsewhere. 'elsewhere' routing requires a remote client
+    // that speaks the same contract; not implemented yet — current sessions
+    // log the decision and always run locally.
+    if (spec.dispatcher) {
+      const decision = await spec.dispatcher.routeToolCall({
+        toolId: toolUseID,
+        tool: tool.name,
+        input,
+        meta,
+      })
+      if (decision.route === 'elsewhere') {
+        console.warn(
+          `[host-adapter] dispatcher returned elsewhere for ${tool.name} (target=${decision.target.url}) — remote routing not yet implemented, executing locally`,
+        )
+      }
+    }
+
+    const onPermissionRequest = spec.hooks?.onPermissionRequest
+    if (!onPermissionRequest) {
+      return { behavior: 'allow', updatedInput: input }
+    }
     const req = buildPermissionRequest(
       { tool: { name: tool.name }, input, toolUseID },
       meta,
@@ -70,7 +89,7 @@ async function createSession(spec: SessionSpec): Promise<Session> {
     }
   }
 
-  const built = buildQueryEngine({
+  const built = await buildQueryEngine({
     cwd: typeof spec.extra?.['cwd'] === 'string' ? spec.extra['cwd'] : undefined,
     mcpClients,
     canUseTool,

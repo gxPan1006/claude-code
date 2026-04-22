@@ -20,104 +20,119 @@ export interface Claude2MessageLike {
 }
 
 /**
- * Translate one claude2 SDKMessage into at most one Contract v1 SessionEvent.
- * Returns null for messages whose claude2 variant has no contract equivalent
- * (internal status pings, cost tracking, etc.) — callers skip these.
+ * Translate one claude2 SDKMessage into zero, one, or many Contract v1
+ * SessionEvents. Returning an array lets a single `assistant` message with
+ * both text and tool_use blocks emit both assistant-done and tool-call-start
+ * events.
+ *
+ * Unknown SDKMessage variants return an empty array — forward-compatible.
  */
 export function translateSdkMessage(
   msg: Claude2MessageLike,
-): SessionEvent | null {
+): SessionEvent[] {
   switch (msg.type) {
-    // claude2 streams partial assistant deltas as { type: 'stream_event', ... }
+    // Partial assistant deltas stream as { type: 'stream_event', event: ... }
     case 'stream_event': {
       const event = (msg as { event?: { type?: string; delta?: unknown } })
         .event
       if (event?.type === 'content_block_delta') {
         const delta = event.delta as { type?: string; text?: string } | undefined
         if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
-          return { type: 'assistant-delta', delta: { type: 'text', text: delta.text } }
+          return [
+            { type: 'assistant-delta', delta: { type: 'text', text: delta.text } },
+          ]
         }
       }
-      return null
+      return []
     }
 
-    // Complete assistant message
+    // Complete assistant message — may contain text blocks, tool_use blocks,
+    // or both. Emit tool-call-start per tool_use, then assistant-done with
+    // whatever text is present (may be empty when the turn is tool-only).
     case 'assistant': {
       const message = (msg as { message?: { content?: unknown[] } }).message
       const blocks = Array.isArray(message?.content) ? message.content : []
-      const textBlocks = blocks
-        .filter(
-          (b): b is { type: 'text'; text: string } =>
-            typeof b === 'object' &&
-            b !== null &&
-            (b as { type?: unknown }).type === 'text' &&
-            typeof (b as { text?: unknown }).text === 'string',
-        )
-        .map((b) => ({ type: 'text' as const, text: b.text }))
-      return {
+      const out: SessionEvent[] = []
+      const textBlocks: { type: 'text'; text: string }[] = []
+
+      for (const b of blocks) {
+        if (typeof b !== 'object' || b === null) continue
+        const block = b as { type?: unknown; text?: unknown; id?: unknown; name?: unknown; input?: unknown }
+        if (block.type === 'text' && typeof block.text === 'string') {
+          textBlocks.push({ type: 'text', text: block.text })
+        } else if (
+          block.type === 'tool_use' &&
+          typeof block.id === 'string' &&
+          typeof block.name === 'string'
+        ) {
+          out.push({
+            type: 'tool-call-start',
+            toolId: block.id,
+            tool: block.name,
+            input: block.input,
+          })
+        }
+      }
+      out.push({
         type: 'assistant-done',
         message: { role: 'assistant', content: textBlocks },
-      }
+      })
+      return out
     }
 
-    // Tool invocation kicks off
-    case 'tool_use_start': {
-      const m = msg as { id?: string; name?: string; input?: unknown }
-      if (typeof m.id === 'string' && typeof m.name === 'string') {
-        return {
-          type: 'tool-call-start',
-          toolId: m.id,
-          tool: m.name,
-          input: m.input,
+    // Synthetic user messages carry tool_result content blocks — surface
+    // them as tool-call-done events.
+    case 'user': {
+      const message = (msg as { message?: { content?: unknown[] } }).message
+      const blocks = Array.isArray(message?.content) ? message.content : []
+      const out: SessionEvent[] = []
+      for (const b of blocks) {
+        if (typeof b !== 'object' || b === null) continue
+        const block = b as {
+          type?: unknown
+          tool_use_id?: unknown
+          content?: unknown
+        }
+        if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+          out.push({
+            type: 'tool-call-done',
+            toolId: block.tool_use_id,
+            output: block.content,
+          })
         }
       }
-      return null
+      return out
     }
 
-    // Tool result available
-    case 'tool_result': {
-      const m = msg as { tool_use_id?: string; content?: unknown }
-      if (typeof m.tool_use_id === 'string') {
-        return {
-          type: 'tool-call-done',
-          toolId: m.tool_use_id,
-          output: m.content,
-        }
+    // History compaction (emitted as system message with subtype)
+    case 'system': {
+      const subtype = (msg as { subtype?: unknown }).subtype
+      if (subtype === 'compact_boundary') {
+        return [{ type: 'compact-done' }]
       }
-      return null
+      return []
     }
 
-    // Permission prompt
-    case 'permission_request': {
-      const m = msg as { id?: string; tool?: string; input?: unknown }
-      if (typeof m.id === 'string' && typeof m.tool === 'string') {
-        return {
-          type: 'permission-request',
-          toolId: m.id,
-          tool: m.tool,
-          input: m.input,
-        }
-      }
-      return null
-    }
-
-    // History compaction
-    case 'compact_boundary':
-      return { type: 'compact-done' }
+    // Result message wraps the end of a turn — we already emit assistant-done
+    // above, so nothing to do here for now.
+    case 'result':
+      return []
 
     // API / runtime errors
     case 'error': {
       const m = msg as { error?: { code?: string; message?: string } }
-      return {
-        type: 'error',
-        error: {
-          code: m.error?.code ?? 'unknown',
-          message: m.error?.message ?? 'unspecified error',
+      return [
+        {
+          type: 'error',
+          error: {
+            code: m.error?.code ?? 'unknown',
+            message: m.error?.message ?? 'unspecified error',
+          },
         },
-      }
+      ]
     }
 
     default:
-      return null
+      return []
   }
 }

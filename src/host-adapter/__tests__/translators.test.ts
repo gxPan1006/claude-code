@@ -182,59 +182,69 @@ describe('translateSdkMessage', () => {
         type: 'stream_event',
         event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'hi' } },
       }),
-    ).toEqual({ type: 'assistant-delta', delta: { type: 'text', text: 'hi' } })
+    ).toEqual([{ type: 'assistant-delta', delta: { type: 'text', text: 'hi' } }])
   })
 
-  test('assistant message → assistant-done (text blocks only)', () => {
+  test('assistant message with tool_use emits tool-call-start + assistant-done', () => {
     expect(
       translateSdkMessage({
         type: 'assistant',
         message: {
           content: [
-            { type: 'text', text: 'hello' },
-            { type: 'tool_use', id: 'x', name: 'Bash', input: {} },
+            { type: 'text', text: 'calling tool' },
+            { type: 'tool_use', id: 'x', name: 'Bash', input: { command: 'ls' } },
           ],
         },
       }),
-    ).toEqual({
-      type: 'assistant-done',
-      message: {
-        role: 'assistant',
-        content: [{ type: 'text', text: 'hello' }],
-      },
-    })
-  })
-
-  test('tool_use_start → tool-call-start', () => {
-    expect(
-      translateSdkMessage({
-        type: 'tool_use_start',
-        id: 't-1',
-        name: 'Bash',
+    ).toEqual([
+      {
+        type: 'tool-call-start',
+        toolId: 'x',
+        tool: 'Bash',
         input: { command: 'ls' },
-      }),
-    ).toEqual({
-      type: 'tool-call-start',
-      toolId: 't-1',
-      tool: 'Bash',
-      input: { command: 'ls' },
-    })
+      },
+      {
+        type: 'assistant-done',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'calling tool' }],
+        },
+      },
+    ])
   })
 
-  test('tool_result → tool-call-done', () => {
+  test('assistant with only text → single assistant-done', () => {
     expect(
       translateSdkMessage({
-        type: 'tool_result',
-        tool_use_id: 't-1',
-        content: 'ok',
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'hello' }] },
       }),
-    ).toEqual({ type: 'tool-call-done', toolId: 't-1', output: 'ok' })
+    ).toEqual([
+      {
+        type: 'assistant-done',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'hello' }],
+        },
+      },
+    ])
   })
 
-  test('compact_boundary → compact-done', () => {
-    expect(translateSdkMessage({ type: 'compact_boundary' })).toEqual({
-      type: 'compact-done',
-    })
+  test('user message with tool_result → tool-call-done', () => {
+    expect(
+      translateSdkMessage({
+        type: 'user',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 't-1', content: 'ok' }],
+        },
+      }),
+    ).toEqual([{ type: 'tool-call-done', toolId: 't-1', output: 'ok' }])
+  })
+
+  test('system compact_boundary → compact-done', () => {
+    expect(
+      translateSdkMessage({ type: 'system', subtype: 'compact_boundary' }),
+    ).toEqual([{ type: 'compact-done' }])
   })
 
   test('error carries code and message', () => {
@@ -243,13 +253,19 @@ describe('translateSdkMessage', () => {
         type: 'error',
         error: { code: 'rate_limit', message: 'slow down' },
       }),
-    ).toEqual({
-      type: 'error',
-      error: { code: 'rate_limit', message: 'slow down' },
-    })
+    ).toEqual([
+      {
+        type: 'error',
+        error: { code: 'rate_limit', message: 'slow down' },
+      },
+    ])
   })
 
-  test('unknown type returns null', () => {
-    expect(translateSdkMessage({ type: 'something_new' })).toBeNull()
+  test('unknown type returns empty array', () => {
+    expect(translateSdkMessage({ type: 'something_new' })).toEqual([])
+  })
+
+  test('result message returns empty array (already covered by assistant)', () => {
+    expect(translateSdkMessage({ type: 'result' })).toEqual([])
   })
 })

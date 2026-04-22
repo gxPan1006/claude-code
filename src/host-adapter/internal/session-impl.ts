@@ -109,10 +109,10 @@ export class SessionImpl implements Session {
     const stream = this.deps.built.engine.submitMessage(prompt as string)
     for await (const sdkMsg of stream) {
       if (this.closed) break
-      const event = translateSdkMessage(
+      const events = translateSdkMessage(
         sdkMsg as unknown as Parameters<typeof translateSdkMessage>[0],
       )
-      if (event) this.queue.push(event)
+      for (const event of events) this.queue.push(event)
     }
   }
 
@@ -126,6 +126,18 @@ export class SessionImpl implements Session {
   async inject(message: UserMessage | SystemNotice): Promise<void> {
     if (this.closed) throw new Error('Session is closed')
     if (message.role === 'system') {
+      // Emit a system-notice event immediately so live consumers (channels)
+      // can surface it to the user right away. Also queue the text as a
+      // pending prefix so the model sees it on the next user turn.
+      const text = message.content
+        .map((b) => (b.type === 'text' ? b.text : ''))
+        .join('\n')
+        .trim()
+      this.queue.push({
+        type: 'system-notice',
+        source: message.source,
+        text,
+      })
       this.pendingSystemNotices.push(systemNoticeToPrompt(message))
       return
     }
