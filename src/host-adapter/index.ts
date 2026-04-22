@@ -95,6 +95,11 @@ async function createSession(spec: SessionSpec): Promise<Session> {
     mcpClients,
     canUseTool,
     customSystemPrompt: spec.systemPrompt,
+    // Per-session model override. claude2's QueryEngine accepts
+    // `userSpecifiedModel` in its config and feeds it through
+    // parseUserSpecifiedModel() into the main-loop model. When absent,
+    // claude2's default resolution applies.
+    userSpecifiedModel: spec.model,
   })
 
   return new SessionImpl({ built, mcpClients, metaRef })

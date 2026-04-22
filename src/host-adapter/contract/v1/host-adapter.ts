@@ -17,6 +17,12 @@ export interface SessionSpec {
   systemPrompt?: string
   resumeId?: string
   extra?: Record<string, unknown>
+  /**
+   * Optional model id override. Must be a canonical claude2 model id,
+   * e.g. "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5".
+   * When absent, claude2's default model resolution applies.
+   */
+  model?: string
 }
 
 export interface HostAdapter {
