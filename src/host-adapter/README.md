@@ -66,6 +66,20 @@ src/host-adapter/
 3. **Session.fork**：复制 QueryEngine 状态开新会话
 4. **Session.inject(UserMessage)**：claude2 没有 mid-turn 用户消息注入原语，可能需要档 3（加一个可选钩子字段）
 
+## SessionSpec 字段
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `profile` | ✅ | `'cloud' \| 'local'`（`BackendKind`）。 |
+| `mcpServers` | ✅ | Skill 形式注入的 MCP 服务器列表。 |
+| `hooks` | ⬜ | `onPermissionRequest` 等会话钩子。 |
+| `memory` | ⬜ | `MemoryBridge`，自定义 system prompt 组装（Checkpoint 4）。 |
+| `dispatcher` | ⬜ | `DispatcherHook`，工具调用路由（Checkpoint 4）。 |
+| `systemPrompt` | ⬜ | 直接覆盖 claude2 system prompt 的字符串。 |
+| `resumeId` | ⬜ | 恢复已有会话 id（尚未实现）。 |
+| `extra` | ⬜ | 逃生舱口（目前识别 `cwd`）。 |
+| `model` | ⬜ | 可选 per-session 模型覆盖，canonical claude2 model id，如 `claude-opus-4-7`、`claude-sonnet-4-6`、`claude-haiku-4-5`。不填则走 claude2 默认模型解析。内部通过 `QueryEngineConfig.userSpecifiedModel` 走 `parseUserSpecifiedModel()` 接入 main-loop。 |
+
 ## 对接清单
 
 | 钩子 | 状态 | 实现位置 |
