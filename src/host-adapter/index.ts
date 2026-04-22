@@ -1,6 +1,9 @@
-// Stub HostAdapter — exposes the contract surface but every method throws
-// NotImplemented until the wire-up tasks land (see README.md in this folder
-// for the落地依赖 table).
+// HostAdapter entry. Checkpoint 1 ships the pure translation layer
+// (internal/); createSession stays a NotImplementedError stub until the
+// Checkpoint 2 QueryEngine wire-up lands. See README.md §Checkpoint 2.
+//
+// Early consumers (ai-cognit integration tests, simulators) can reach the
+// translators directly via `import { internal } from './host-adapter'`.
 
 import type {
   HostAdapter,
@@ -9,10 +12,12 @@ import type {
 } from './contract/v1/host-adapter.js'
 import { CONTRACT_VERSION } from './contract/v1/index.js'
 
+export * as internal from './internal/barrel.js'
+
 class NotImplementedError extends Error {
   constructor(hook: string) {
     super(
-      `host-adapter: ${hook} not yet wired to claude2 internals (see src/host-adapter/README.md)`,
+      `host-adapter: ${hook} not yet wired to claude2 internals (see src/host-adapter/README.md §Checkpoint 2)`,
     )
     this.name = 'NotImplementedError'
   }
