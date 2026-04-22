@@ -7,8 +7,12 @@ import path from 'node:path'
 
 import { hostAdapter } from '../index.js'
 
+// Gate: env var or API-key-in-env. Subscription OAuth (keychain-stored)
+// doesn't surface as an env var, so provide RUN_E2E=1 to explicitly opt in.
 const HAS_AUTH = Boolean(
-  process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_OAUTH_TOKEN,
+  process.env.RUN_E2E ||
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.CLAUDE_CODE_OAUTH_TOKEN,
 )
 
 const ECHO_MCP_PATH = path.resolve(
@@ -18,7 +22,11 @@ const ECHO_MCP_PATH = path.resolve(
 )
 
 // eslint-disable-next-line no-console
-if (!HAS_AUTH) console.warn('[e2e] skipping — no ANTHROPIC_API_KEY/OAuth token')
+if (!HAS_AUTH) {
+  console.warn(
+    '[e2e] skipping — set RUN_E2E=1 (for subscription auth) or ANTHROPIC_API_KEY to run',
+  )
+}
 
 describe.skipIf(!HAS_AUTH)('host-adapter E2E (requires API credentials)', () => {
   test(

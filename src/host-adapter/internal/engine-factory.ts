@@ -17,6 +17,7 @@ import type { MCPServerConnection } from '../../services/mcp/types.js'
 import { type AppState, getDefaultAppState } from '../../state/AppStateStore.js'
 import { getTools } from '../../tools.js'
 import { createAbortController } from '../../utils/abortController.js'
+import { enableConfigs } from '../../utils/config.js'
 import { FileStateCache } from '../../utils/fileStateCache.js'
 
 export interface BuildEngineOptions {
@@ -48,6 +49,12 @@ export interface BuiltEngine {
 export function buildQueryEngine(
   opts: BuildEngineOptions,
 ): BuiltEngine {
+  // Bootstrap claude2's config layer. CLI normally calls this in main.tsx
+  // before constructing QueryEngine; headless callers must do the same or
+  // context-assembly (CLAUDE.md loading, project config reads) will throw
+  // "Config accessed before allowed." Idempotent — safe to call per-session.
+  enableConfigs()
+
   const cwd = opts.cwd ?? process.cwd()
   const abortController = opts.abortController ?? createAbortController()
 
